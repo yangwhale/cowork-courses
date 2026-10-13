@@ -1,0 +1,149 @@
+{
+ "title": "MoE 训练优化",
+ "book_id": "moe",
+ "search_placeholder": "搜索（/ 聚焦）",
+ "foot": "Google Cloud · TPU v7x 训练优化",
+ "sections": [
+  {
+   "name": "专题",
+   "home": "moe-public/topic/README.html"
+  }
+ ],
+ "pages": [
+  {
+   "path": "index.html",
+   "standalone": true
+  },
+  {
+   "path": "promo/moe/index.html",
+   "standalone": true
+  },
+  {
+   "path": "moe-public/topic/README.html",
+   "section": "专题",
+   "title": "一个 MoE 模型在 TPU v7x 上的训练优化",
+   "side": "一个 MoE 模型在 TPU v7x 上的训练优化",
+   "article": "md",
+   "level": "l3",
+   "srcline": "moe-public/topic/README.md"
+  },
+  {
+   "path": "moe-public/topic/01-model-and-baseline.html",
+   "section": "专题",
+   "title": "01 · 量法与口径：这是个什么模型，时间花在哪，怎么量才不自欺",
+   "side": "01 · 量法与口径：这是个什么模型，时间花在哪，怎么量才不自欺",
+   "article": "md",
+   "level": "l3",
+   "srcline": "moe-public/topic/01-model-and-baseline.md"
+  },
+  {
+   "path": "moe-public/topic/02-collective-scheduling-and-overlap.html",
+   "section": "专题",
+   "title": "02 · 集合通信调度与重叠：搬的时机比搬的速度更要命",
+   "side": "02 · 集合通信调度与重叠：搬的时机比搬的速度更要命",
+   "article": "md",
+   "level": "l3",
+   "srcline": "moe-public/topic/02-collective-scheduling-and-overlap.md"
+  },
+  {
+   "path": "moe-public/topic/03-dcn-and-multislice.html",
+   "section": "专题",
+   "title": "03 · DCN 与多切片：把单片的优化搬到 10+ 片",
+   "side": "03 · DCN 与多切片：把单片的优化搬到 10+ 片",
+   "article": "md",
+   "level": "l3",
+   "srcline": "moe-public/topic/03-dcn-and-multislice.md"
+  },
+  {
+   "path": "moe-public/topic/04-fp8-quantization.html",
+   "section": "专题",
+   "title": "04 · FP8：稠密乘法（dot_general）只占约 6%，为什么步时能少两成",
+   "side": "04 · FP8：稠密乘法",
+   "article": "md",
+   "level": "l3",
+   "srcline": "moe-public/topic/04-fp8-quantization.md"
+  },
+  {
+   "path": "moe-public/topic/05-kernels-kda-mla-moe.html",
+   "section": "专题",
+   "title": "05 · KDA / MLA / MoE kernel：手写的算子要过三关",
+   "side": "05 · KDA / MLA / MoE kernel：手写的算子要过三关",
+   "article": "md",
+   "level": "l3",
+   "srcline": "moe-public/topic/05-kernels-kda-mla-moe.md"
+  },
+  {
+   "path": "moe-public/topic/06-memory-remat-compile.html",
+   "section": "专题",
+   "title": "06 · 显存、remat 与编译：远低于上限的理论账怎么变成 92 GiB",
+   "side": "06 · 显存、remat 与编译：远低于上限的理论账怎么变成 92 GiB",
+   "article": "md",
+   "level": "l3",
+   "srcline": "moe-public/topic/06-memory-remat-compile.md"
+  },
+  {
+   "path": "moe-public/topic/07-data-and-checkpointing.html",
+   "section": "专题",
+   "title": "07 · 数据与检查点：训练跑顺之后，时间从哪漏走",
+   "side": "07 · 数据与检查点：训练跑顺之后，时间从哪漏走",
+   "article": "md",
+   "level": "l3",
+   "srcline": "moe-public/topic/07-data-and-checkpointing.md"
+  },
+  {
+   "path": "moe-public/topic/08-open-problems.html",
+   "section": "专题",
+   "title": "08 · 未解决问题：下一个集群的实验清单",
+   "side": "08 · 未解决问题：下一个集群的实验清单",
+   "article": "md",
+   "level": "l3",
+   "srcline": "moe-public/topic/08-open-problems.md"
+  },
+  {
+   "path": "moe-public/topic/09-ablation-ladder.html",
+   "section": "专题",
+   "title": "09 · 消融阶梯：一刀一刀拆掉，看每一刀值多少",
+   "side": "09 · 消融阶梯：一刀一刀拆掉，看每一刀值多少",
+   "article": "md",
+   "level": "l3",
+   "srcline": "moe-public/topic/09-ablation-ladder.md"
+  },
+  {
+   "path": "moe-public/topic/10-optimization-roadmap.html",
+   "section": "专题",
+   "title": "10 · 优化依赖图：哪刀先哪刀后、为什么这个顺序",
+   "side": "10 · 优化依赖图：哪刀先哪刀后、为什么这个顺序",
+   "article": "md",
+   "level": "l3",
+   "srcline": "moe-public/topic/10-optimization-roadmap.md"
+  },
+  {
+   "path": "moe-public/topic/11-porting-checklist.html",
+   "section": "专题",
+   "title": "11 · 迁移清单",
+   "side": "11 · 迁移清单",
+   "article": "md",
+   "level": "l3",
+   "srcline": "moe-public/topic/11-porting-checklist.md"
+  },
+  {
+   "path": "moe-public/topic/12-multimodal-and-numerics-alignment.html",
+   "section": "专题",
+   "title": "12 · 多模态版与精度对拍",
+   "side": "12 · 多模态版与精度对拍",
+   "article": "md",
+   "level": "l3",
+   "srcline": "moe-public/topic/12-multimodal-and-numerics-alignment.md"
+  },
+  {
+   "path": "moe-public/topic/13-silent-errors.html",
+   "section": "专题",
+   "title": "13 · 静默错误总表：跑通了，不等于对了",
+   "side": "13 · 静默错误总表：跑通了，不等于对了",
+   "article": "md",
+   "level": "l3",
+   "srcline": "moe-public/topic/13-silent-errors.md"
+  }
+ ],
+ "redirects": {}
+}

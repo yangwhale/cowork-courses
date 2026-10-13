@@ -49,7 +49,8 @@ def toc_text(h: str) -> str:
     """标题 → 本页目录里的文字：节号后补空格，去掉出处气泡，其余标签剥掉、实体原样保留。"""
     h = re.sub(r'<span class="hn">(.*?)</span>', r"\1 ", h)
     h = re.sub(r'<span class="src"[^>]*>源<span class="srci">.*?</span></span>', "", h, flags=re.S)
-    return re.sub(r"<[^>]+>", "", h).strip()
+    t = re.sub(r"<[^>]+>", "", h).strip()
+    return html.escape(html.unescape(t)[:60]) if len(html.unescape(t)) > 60 else t    # 目录最多 60 字
 
 
 def headings(art: str):
@@ -149,13 +150,14 @@ def page_html(p: dict, art: str, sec_pages: list) -> str:
     if not p.get("no_toc"):
         items = "".join(f'<li class="l{lv}"><a href="#{hid}">{txt}</a></li>' for lv, hid, txt in headings(art))
         toc = f'<nav class="ptoc" aria-label="本页目录"><div class="ptoc-h">本页</div><ol>{items}</ol></nav>'
+    srcline = f'<div class="srcline">源文件：<code>{p["srcline"]}</code></div>' if "srcline" in p else ""
     r = root_of(path)
     return f"""<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{p["title"]} · {BOOK["title"]}</title>
 <link rel="icon" href="{FAVICON}">
-<meta name="v7x-book" content="handbook-public">
+<meta name="v7x-book" content="{BOOK["book_id"]}">
 <link rel="stylesheet" href="{r}/assets/site.css">
 <script>{SIDE_JS}</script>
 <meta name="robots" content="noindex">
@@ -164,12 +166,12 @@ def page_html(p: dict, art: str, sec_pages: list) -> str:
 <header class="top"><div class="inner">
   <a class="brand" href="{rel("index.html", path)}"><span class="crab">🦀</span><span class="bt">{BOOK["title"]}</span></a>
   <nav class="secs" aria-label="栏目">{topnav(sec, path)}</nav>
-  <div class="search"><input id="q" type="search" placeholder="搜索（聚焦）" aria-label="全站搜索" autocomplete="off">
+  <div class="search"><input id="q" type="search" placeholder="{BOOK["search_placeholder"]}" aria-label="全站搜索" autocomplete="off">
   <div id="qr" class="qr" role="listbox"></div></div>
 </div></header>
 <div class="page {p["level"]}">
 <nav class="side" aria-label="{sec}"><div class="side-h">{sec}</div><ol>{side}</ol></nav>{split}
-<main id="main"><nav class="crumb" aria-label="面包屑">{crumb}</nav>{lbar}<article class="{p["article"]}">{art}</article>{pn}</main>
+<main id="main"><nav class="crumb" aria-label="面包屑">{crumb}</nav>{lbar}<article class="{p["article"]}">{art}</article>{srcline}{pn}</main>
 {toc}
 </div>
 <footer class="foot"><div class="inner">{BOOK["foot"]}</div></footer>
@@ -183,7 +185,7 @@ def redirect_html(path: str, r: dict) -> str:
     to = r["to"]
     renamed = r["kind"] == "renamed"
     hash = ' + location.hash' if renamed else ""
-    msg = f"这一章已改号，在本书《万卡级 {BOOK['title']}》" if renamed else "这一页已并入本书《经验教训》"
+    msg = r["msg"]
     return f"""<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8">
 <meta name="v7x-redirect" content="{to}">
