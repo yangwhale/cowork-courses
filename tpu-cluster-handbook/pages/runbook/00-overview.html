@@ -1,0 +1,878 @@
+<h1 id="00-总览一个整-pod-是什么">00 总览：一个整 pod 是什么</h1>
+<blockquote>
+<p>9,216 颗芯片不是「2,304 台一样的机器」，而是 144 个固定积木块，用光交换临时拼起来跑训练。
+和普通 GKE TPU 节点池（建好就是一片、能直接跑；坏一台 GCE 换新的）三处相反：节点池建好<strong>不能直接跑</strong>；切片<strong>运行时临时拼</strong>；坏了<strong>没人替你换</strong>。</p>
+</blockquote>
+<div class="x-stats">
+<ul>
+<li><strong>9,216</strong> 颗 TPU7x 芯片</li>
+<li><strong>144</strong> 个 cube（积木块）</li>
+<li><strong>2,304</strong> 台 host / VM</li>
+<li><strong>18,432</strong> 个 JAX device</li>
+<li>按 cube 计的 SLO：覆盖其中一定数量（以合同为准）</li>
+</ul>
+</div>
+<h2 id="0-先看一张图谁包含谁" class="hc0"><span class="hn">0.</span>先看一张图：谁包含谁</h2>
+<figure class="img"><a href="../figs/f01-topology-hierarchy.svg" target="_blank" title="新窗口看原图"><img src="../figs/f01-topology-hierarchy.svg" alt="一个整 pod 的层级：pod → 144 cube → 16 host → 4 chip，以及「144 个里能用几个」的账" loading="lazy"></a><figcaption>一个整 pod 的层级：pod → 144 cube → 16 host → 4 chip，以及「144 个里能用几个」的账</figcaption></figure>
+<p>GKE 上：1 cube = 1 个节点池（16 node）；1 host = 1 node（<code>tpu7x-standard-4t</code>），pod 写 <code>google.com/tpu: 4</code>。</p>
+<blockquote class="co key">
+<p><span class="co-t"><i>💡</i><span>一句话记住</span></span><strong>cube 是积木，slice（切片）是临时拼出来的机器；训练跑在切片上，不跑在节点池上。</strong></p>
+</blockquote>
+<h2 id="1-物理与计费单位" class="hc1"><span class="hn">1.</span>物理与计费单位</h2>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>单位</th>
+<th>等于</th>
+<th>本 pod 数量</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>chip</td>
+<td>2 个 TensorCore = JAX 里 <strong>2 个 device</strong></td>
+<td>9,216 chip = 18,432 device</td>
+</tr>
+<tr>
+<td>host / VM</td>
+<td><code>tpu7x-standard-4t</code>：4 chip、224 vCPU、960 GB RAM、2 NUMA</td>
+<td>2,304</td>
+</tr>
+<tr>
+<td><strong>sub-block = cube</strong></td>
+<td>16 host = 64 chip，拓扑 4x4x4</td>
+<td>144</td>
+</tr>
+<tr>
+<td>block = superpod</td>
+<td>144 sub-block</td>
+<td>1</td>
+</tr>
+<tr>
+<td>reservation</td>
+<td>ALL_CAPACITY / DENSE / GROUPED 维护</td>
+<td>1</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>每芯片</strong>（公开页 TPU7x <span class="src" tabindex="0">源<span class="srci"><a href="https://docs.cloud.google.com/tpu/docs/tpu7x" target="_blank" rel="noopener">https://docs.cloud.google.com/tpu/docs/tpu7x</a></span></span>）：2 TensorCore + 4 SparseCore；BF16 2,307 / FP8 4,614 TFLOP/s；HBM 192 GiB、7,380 GB/s（两个 chiplet 各 96 GiB，各算 1 个 device）；ICI 1,200 GB/s 双向、每轴 200；DCN 100 Gb/s。</p>
+<ul>
+<li><strong>每 device：HBM 实报 <code>94.74 GB</code> 可用</strong>。MaxText 日志标 GB，实为 GiB（÷2^30）；物理 96 GiB。</li>
+<li>BF16 峰值 1,153.5 TFLOP/s（= 每芯片 2,307 ÷ 2）。</li>
+<li>默认功耗档把单 device 的<strong>天花板</strong>压到约 990 TFLOP/s（约 86%）；推算约 998（= <a href="04-functional-verification.html#card-c1">04 章 C1 卡</a>给的默认档天花板 1,996 /芯片 ÷ 2）<span class="tg inf">[推断，04 C1 卡]</span>。</li>
+<li><strong>实测</strong>默认档 bf16 matmul：单 device 测法 868（N=16384）；整芯片测法折半约 861（N=16384）–904（N=32768）。高频档单 device 测法 995。</li>
+</ul>
+<blockquote class="co warn">
+<p><span class="co-t"><i>⚠️</i><span>「chip」和「device」别混</span></span>配额、<code>google.com/tpu</code>、SLA 都数 <strong>chip</strong>；JAX / MaxText 日志和并行度数 <strong>device</strong>（= chip × 2）。看到规模数字先问是芯片还是 device：一个 4x8x8 是 256 芯 = 512 device。</p>
+</blockquote>
+<p><a id="analogy"></a></p>
+<h2 id="15-贯穿全书的比方一个车辆段和它的信号楼" class="hc2"><span class="hn">1.5</span>贯穿全书的比方：一个车辆段和它的信号楼</h2>
+<p>pod 是<strong>车辆段</strong>：144 节车厢停在固定股道<strong>从不挪动</strong>，贯通道默认断开；信号楼远程把几节接成一列，跑完拆开。</p>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>真实的东西</th>
+<th>车辆段里的对应</th>
+<th>记住什么</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>cube</td>
+<td>固定股道上的一节车厢</td>
+<td>不能同属两列车</td>
+</tr>
+<tr>
+<td>PROVISION_ONLY 节点池</td>
+<td>通电但<strong>贯通道没接</strong></td>
+<td>Ready ≠ 能跑 TPU</td>
+</tr>
+<tr>
+<td>OCS 光交换</td>
+<td><strong>信号楼接线台</strong></td>
+<td><strong>不相邻</strong>也能编一列；坏一台 = 全部 DEGRADED</td>
+</tr>
+<tr>
+<td>Slice</td>
+<td>临时编好的<strong>一列车</strong></td>
+<td>训练跑在列车上</td>
+</tr>
+<tr>
+<td>ICI / DCN</td>
+<td>列车内<strong>贯通道</strong> / 列车间<strong>无线电</strong></td>
+<td>同口径后者约慢 50 倍（<a href="#g-dcn">术语表</a>）</td>
+</tr>
+<tr>
+<td>multislice</td>
+<td>一个团<strong>分乘几列同型号列车</strong></td>
+<td>整 pod 训练 = 多列车</td>
+</tr>
+<tr>
+<td>sub-slice</td>
+<td><strong>包厢被单独卖出</strong></td>
+<td>这节编不进大列车（碎片）</td>
+</tr>
+<tr>
+<td>GKE Slice Controller</td>
+<td><strong>信号楼调度员</strong>（Google 托管）</td>
+<td>真正接线拆线</td>
+</tr>
+<tr>
+<td>Kueue / TAS</td>
+<td><strong>售票处</strong> / <strong>按车厢号分座</strong></td>
+<td>同团落在同组 cube</td>
+</tr>
+<tr>
+<td>kueue-slice-controller + AdmissionCheck</td>
+<td><strong>传令员 + 检票闸机</strong></td>
+<td>整列编好才开闸；<strong>闸机坏了全站进不了人</strong></td>
+</tr>
+<tr>
+<td>一片坏 → 全部重切</td>
+<td>一列出事，<strong>全团解散重编</strong></td>
+<td>要有备件车厢</td>
+</tr>
+<tr>
+<td>Slice finalizer</td>
+<td><strong>解编锁</strong></td>
+<td>别手动去（<a href="05-dynamic-slicing-operations.html">05</a>）；硬注销 → 挂旧车次牌 = 假缺货</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>对不上的地方</strong>：切片是<strong>三维</strong> <code>AxBxC</code> 环面网格（toroidal mesh）（<a href="#3-%E5%88%87%E7%89%87%E6%80%8E%E4%B9%88%E6%9D%A5">§3</a>），想形状用积木；接线要几十秒到几分钟；「一列出事整团重编」现实里不合理，正是反直觉点（<a href="05-dynamic-slicing-operations.html#step-5-2">05 §5.2</a>）。</p>
+<h2 id="2-软件分层谁管什么" class="hc3"><span class="hn">2.</span>软件分层（谁管什么）</h2>
+<figure class="mermaid"><img src="../assets/mermaid/cd9e8b79301f.png" width="980" alt="示意图" loading="lazy"></figure><p>读图：出问题先判断卡在哪层（<a href="05-dynamic-slicing-operations.html#step-5-6">05 §5.6</a> 按三层分诊）。</p>
+<p><strong>两个「slice controller」别搞混</strong>：</p>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th></th>
+<th>GKE Slice Controller</th>
+<th><code>kueue-slice-controller</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>住在哪</td>
+<td>Google 托管（<code>--enable-slice-controller</code>）</td>
+<td>ns <code>slice-controller-system</code>，交付方装（<a href="03-control-plane-addons.html#step-3-3">03 §3.3</a>）</td>
+</tr>
+<tr>
+<td>是什么</td>
+<td>Slice CR ↔ GCE</td>
+<td>AdmissionCheck + Job/JobSet/LWS 变更 webhook</td>
+</tr>
+<tr>
+<td>输入 → 输出</td>
+<td>Slice CR → workload policy、MMIG、attach</td>
+<td>准入的 Workload → Slice CR；ACTIVE → 放行 pod</td>
+</tr>
+<tr>
+<td>挂了</td>
+<td>切片不形成/不回收（找 Google）</td>
+<td>全集群建不了 Job（fail-closed，<a href="pitfalls.html#l-28">经验教训第 28 条</a>）</td>
+</tr>
+</tbody>
+</table></div>
+<ul>
+<li>节点池 <code>PROVISION_ONLY</code>：cube 内部都<strong>没有 ICI</strong>，不形成 Slice 跑不了 TPU；JobSet 每 replica 一个 Slice，全 ACTIVE 才放行。</li>
+</ul>
+<p><strong>从提交到跑起来</strong>（<a href="05-dynamic-slicing-operations.html#step-5-2">05 §5.2</a>）：</p>
+<figure class="img"><a href="../figs/f04-control-flow-sequence.svg" target="_blank" title="新窗口看原图"><img src="../figs/f04-control-flow-sequence.svg" alt="提交一个 JobSet：参与者、调用顺序、每一跳的实测耗时" loading="lazy"></a><figcaption>提交一个 JobSet：参与者、调用顺序、每一跳的实测耗时</figcaption></figure>
+<p><strong>读图</strong>：只有建 Slice → ACTIVE 慢：安静 26–63 s，和另一个更大规模任务同时建时 161–172 s；选中的 cube 被子切片占着时 Slice 反复报 <code>has an active sub slice</code>、退避重试，任务级约 6 / 12 min（等包厢释放，状态一直在变，不算卡死）。出处：<a href="06c-multislice-training.html#step-6-6">06c §6.6</a>。</p>
+<h2 id="3-切片怎么来" class="hc4"><span class="hn">3.</span>切片怎么来</h2>
+<figure class="img"><a href="../figs/f02-slice-shapes-ocs.svg" target="_blank" title="新窗口看原图"><img src="../figs/f02-slice-shapes-ocs.svg" alt="切片形状、要几个 cube、安静时实测激活时间；OCS 把不相邻的 cube 接成一个环面" loading="lazy"></a><figcaption>切片形状、要几个 cube、安静时实测激活时间；OCS 把不相邻的 cube 接成一个环面</figcaption></figure>
+<ul>
+<li><strong>super-slice</strong>（整 cube 拼）：GKE ≥ 1.35.2-gke.1842000。</li>
+<li><strong>sub-slice</strong>（cube 内切）：2x2x1（1 host）/ 2x2x2 / 2x2x4 / 2x4x4（8 host）；GKE ≥ 1.36.0-gke.3712000。</li>
+<li><strong>multislice</strong>：N 个同形状 super-slice 走 DCN（如 <a href="06c-multislice-training.html">06c</a> 的 10+ × 4x8x8）。</li>
+</ul>
+<blockquote class="co key">
+<p><span class="co-t"><i>💡</i><span>单片最多 32 cube（公开文档），整 pod 训练只能走 multislice</span></span></p>
+<ul>
+<li><strong>公开文档：单个 super-slice 最多 32 个 sub-block（cube）= 2,048 chip</strong>；每维须是 4 的倍数、A ≤ B ≤ C、乘积 ≤ 9,216；8x16x16（32）、8x12x20（30）、12x12x12（27）都合法，没有「2 的幂」限制 <span class="src" tabindex="0">源<span class="srci"><a href="https://docs.cloud.google.com/kubernetes-engine/docs/how-to/use-gke-dynamic-slicing" target="_blank" rel="noopener">https://docs.cloud.google.com/kubernetes-engine/docs/how-to/use-gke-dynamic-slicing</a></span></span>。</li>
+<li>「单片最大 128 cube、须是 2 的幂」这一说法<strong>与公开文档冲突</strong>，以 Google 书面答复为准。全书配额公式 min(128, …) 里的 128（<code>CUBES_MAX_JOB</code>）按「最大规划任务的 cube 总数（可以是多片）」用，不当单片上限。<strong>待 Google 书面确认</strong>：「tpu7x 单个 ICI 切片上限以公开文档 32 cube 为准还是 128」，见 <a href="09-pre-delivery-alignment.html#d02">09 D02</a>。</li>
+</ul>
+</blockquote>
+<ul>
+<li><strong>SLO 覆盖的 cube 数</strong>（§4）不是切片上限；单片上限：公开文档写明 32 个 cube（见<a href="pitfalls.html#l-7">经验教训第 7 条</a>），落到你们集群上随上框一并以 Google 书面答复为准。</li>
+<li>公开页形状表只列到 8x16x16 <span class="src" tabindex="0">源<span class="srci"><a href="https://docs.cloud.google.com/tpu/docs/tpu7x" target="_blank" rel="noopener">https://docs.cloud.google.com/tpu/docs/tpu7x</a></span></span>，与上面 GKE 文档的 32 cube 上限一致；宣传的「scale up to 9216 chips」对应的是拓扑乘积上限 9,216 与 multislice，不是单片能申请到 144 cube。</li>
+<li>实测集群上测过的最大单片是 8x16x16： 32 cube 测试作业 46–68 s ACTIVE、提交到 pod 全 Completed ≤160 s（驱动总耗时 193 s），见 <a href="04-functional-verification.html#step-4-7">04 §4.7</a>。</li>
+</ul>
+<div class="kp kc0"><div class="kp-t">cube 内外两种线</div>
+<ul>
+<li>cube 内铜缆固定布线，cube 间走光纤 + OCS。</li>
+<li>≥ 1 cube 默认开 <strong>ICI resiliency</strong>：光链路 / OCS 端口坏了绕路降速也开得出 <span class="src" tabindex="0">源<span class="srci"><a href="https://docs.cloud.google.com/tpu/docs/system-architecture-tpu-vm" target="_blank" rel="noopener">https://docs.cloud.google.com/tpu/docs/system-architecture-tpu-vm</a></span></span>；DEGRADED 在 SLO 里算健康（<a href="09-pre-delivery-alignment.html#d01">09 D01</a>），关掉它属于 SLA 排除项（09 D02）。</li>
+<li>值得开：TPU v4 论文约 50 cube 作业可用性，只靠 cube 级重配约 94%，加容错路由 99.98% <span class="src" tabindex="0">源<span class="srci"><a href="https://www.usenix.org/system/files/nsdi24-zu.pdf" target="_blank" rel="noopener">https://www.usenix.org/system/files/nsdi24-zu.pdf</a> §5</span></span>；TPU7x 无公开数据。</li>
+</ul></div>
+<p>Slice 状态机（Ready 条件的 reason）：</p>
+<figure class="mermaid"><img src="../assets/mermaid/539563e29e7e.png" width="454" alt="示意图" loading="lazy"></figure><p>读图：SliceCreationFailed 是创建没成、会自动重试；FAILED 是跑起来之后坏掉的终态，只能删了重建（细节见 <a href="05-dynamic-slicing-operations.html#step-5-1">05 §5.1</a> 状态表）。黄色的 ACTIVE_DEGRADED <strong>不是正常运行态</strong>：它是 Slice 自己的状态，不是 §4 那种 cube 级 DEGRADED（SLO 里算健康）；实测一天出现二十多次，没有一次回到 ACTIVE，出现即删 JobSet 重提（<a href="05-dynamic-slicing-operations.html#step-5-6">05 §5.6</a>、<a href="07a-fault-recovery.html">07a</a>）。激活耗时以 <a href="04-functional-verification.html#card-a">04 卡 A</a> 为准（安静时单片 26–63 s，即集群上没有别的任务在建片）；先例口径「正常约 45–70 s、过渡态 &gt;10–15 min 即 bug」，本书告警线 &gt;10 min，≥32 cube &gt;15 min（<a href="05-dynamic-slicing-operations.html#step-5-1">05 §5.1</a>）。</p>
+<h2 id="4-144-个-cube不等于144-个都能用" class="hc5"><span class="hn">4.</span>「144 个 cube」不等于「144 个都能用」</h2>
+<figure class="img"><a href="../figs/fig-cube-capacity-line.svg" target="_blank" title="新窗口看原图"><img src="../figs/fig-cube-capacity-line.svg" alt="144 个 cube 的数轴：128 最大任务上限、144 物理；规划空出的 16 个当备件" loading="lazy"></a><figcaption>144 个 cube 的数轴：128 最大任务上限、144 物理；规划空出的 16 个当备件</figcaption></figure>
+<ul>
+<li><strong>144 个 cube 全在使用方的 reservation 里</strong>；Google 的 SLO 按 cube 计，覆盖其中一定数量（以合同为准），SLO 外的照样能调度，坏了不算违约，当热备。具体数量以签署原文为准（<a href="09-pre-delivery-alignment.html#d02">09 D02</a>）。</li>
+</ul>
+<p><strong>备件两层</strong>：Google 层 OCS「optically bypass the unhealthy unit … swapping in a designated spare」<span class="src" tabindex="0">源<span class="srci"><a href="https://cloud.google.com/blog/products/compute/inside-the-ironwood-tpu-codesigned-ai-stack" target="_blank" rel="noopener">https://cloud.google.com/blog/products/compute/inside-the-ironwood-tpu-codesigned-ai-stack</a></span></span>；交付方这层自己隔离坏 cube、在备件上重切（05 §5.7、07 §7.3）。</p>
+<p>公开文档称 slice controller 会自动 reshape 当前切片、重配网络，用健康备用 partition 换掉故障 partition <span class="src" tabindex="0">源<span class="srci"><a href="https://docs.cloud.google.com/kubernetes-engine/docs/concepts/dynamic-slicing" target="_blank" rel="noopener">https://docs.cloud.google.com/kubernetes-engine/docs/concepts/dynamic-slicing</a></span></span>；All Capacity 下备件是否只从本 reservation 的 144 个里取、实测是否触发，待 Google 确认。</p>
+<ul>
+<li><strong>待 Google 书面确认</strong>：「All Capacity 下 slice controller 自动换备件时备件从哪来、是不是 reservation 里那 144 个之一、什么条件触发」，见 <a href="09-pre-delivery-alignment.html#d08">09 D08</a>。</li>
+</ul>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>事实</th>
+<th>数字</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>reservation 列出的 sub-block</td>
+<td>144 个全在，都有在用 host</td>
+</tr>
+<tr>
+<td>SLO 覆盖范围</td>
+<td>按 cube 计，覆盖 144 个中的一定数量；SLO 外的用于故障替换，未被替换时可跑低优先级作业；口径以书面 SLO 为准</td>
+</tr>
+<tr>
+<td>Obtainability / Cube Schedulability SLO</td>
+<td>按 cube 计；覆盖数量、统计窗口与达标率以合同为准</td>
+</tr>
+<tr>
+<td>维护窗口内的 cube 不计入 SLO</td>
+<td>—</td>
+</tr>
+<tr>
+<td>使用方常见约定口径</td>
+<td>128 cube 可用 + 16 备件</td>
+</tr>
+<tr>
+<td>一次巡检快照（几小时后复查时 HEALTHY 是 131 个 16/16 + 4 个 16/15（同一记法 healthy/inUse：16 台都健康、只 15 台在用），DEGRADED 不变，见 09 D01 <span class="src" tabindex="0">源<span class="srci">scripts/08-daily-check.sh 输出格式</span></span>）</td>
+<td>135 HEALTHY 16/16，9 DEGRADED（<code>healthyHostCount</code> 都 15；7 个 <code>inUseHostCount</code> 也 15 即 <a href="01-capacity-and-prereqs.html#step-1-2">01 §1.2</a> 的 15/15，2 个 15/16）</td>
+</tr>
+</tbody>
+</table></div>
+<blockquote class="co key">
+<p><span class="co-t"><i>💡</i><span>结论 <span class="tg inf">[推断]</span>：规划最大任务 ≤128 cube，盯剩余备件数</span></span>留 ≥2 个 cube 高于 SLO 线作缓冲。和交付前对齐健康口径、SLO 线（按 cube 计，数量以合同为准）与规划线 128→ <a href="01-capacity-and-prereqs.html#step-1-9">01 §1.9</a>、<a href="09-pre-delivery-alignment.html#d01">09 D01–D04</a>。</p>
+</blockquote>
+<h2 id="5-所有权边界all-capacity-模式" class="hc0"><span class="hn">5.</span>所有权边界（All Capacity 模式）</h2>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th></th>
+<th>普通 GKE TPU 节点池</th>
+<th>All Capacity（本 pod）</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>坏一台机器</td>
+<td>GCE 换一台新的</td>
+<td><strong>原地维修、无 holdback</strong>（见下图）</td>
+</tr>
+<tr>
+<td>计划内维护</td>
+<td>Google 安排</td>
+<td>自己分批触发</td>
+</tr>
+<tr>
+<td>SLA</td>
+<td>GCE SLA</td>
+<td><strong>没有 GCE SLA</strong>，只有 cube 数 SLO；故障与维护使用方自理</td>
+</tr>
+</tbody>
+</table></div>
+<figure class="mermaid"><img src="../assets/mermaid/c920c6592690.png" width="937" alt="示意图" loading="lazy"></figure><p>读图：Google 那格无时长承诺，恢复快慢看蓝色两格。GKE 不做组维护，走 GCE reservation API；池里有 VM 坏，池状态也不变 ERROR。每行要和使用方书面说清 → <a href="09-pre-delivery-alignment.html#d05">09 D02、D05、D07</a>。</p>
+<h2 id="6-本手册的数据从哪来" class="hc1"><span class="hn">6.</span>本手册的数据从哪来</h2>
+<p>本手册的数据来自两个万卡级 TPU7x 整 pod，书里分别这样称呼：</p>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>书里叫法</th>
+<th>是什么</th>
+<th>关键差异</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>实测集群</td>
+<td>本书脚本实际跑过的整 pod；「实测」都指它</td>
+<td>每个节点池钉 1 个 sub-block；GKE 1.37 RAPID；Kueue 0.17</td>
+</tr>
+<tr>
+<td>先例 / 参考集群</td>
+<td>Google 另一个整 pod，用 Cluster Toolkit 蓝图建</td>
+<td>蓝图 144 固定池（实际到手不足 144，见 01 §1.2）；GKE 1.36 REGULAR；Kueue 0.18</td>
+</tr>
+</tbody>
+</table></div>
+<p>实测集群和参考集群下文合称「两个集群」。两者版本不同，书里凡是版本相关的结论都会注明出自哪一个。</p>
+<p><a id="glossary"></a></p>
+<h2 id="7-术语表" class="hc2"><span class="hn">7.</span>术语表</h2>
+<p><strong>同一个 cube 的五个名字</strong>：</p>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>在哪一层</th>
+<th>叫什么</th>
+<th>在哪看到</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>reservation</td>
+<td>sub-block</td>
+<td><code>gcloud ... reservations sub-blocks list</code></td>
+</tr>
+<tr>
+<td>口头 / 文档</td>
+<td>cube</td>
+<td>本手册</td>
+</tr>
+<tr>
+<td>GCE</td>
+<td>MIG（一 cube 一个）</td>
+<td>节点池的 <code>instanceGroupUrls</code></td>
+</tr>
+<tr>
+<td>GKE</td>
+<td>节点池（16 个节点）</td>
+<td><code>gcloud container node-pools list</code></td>
+</tr>
+<tr>
+<td>Kueue / Slice</td>
+<td>4x4x4 partition id</td>
+<td>节点标签 <code>cloud.google.com/gke-tpu-partition-4x4x4-id</code>、Slice 的 <code>spec.partitionIds</code></td>
+</tr>
+</tbody>
+</table></div>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>术语</th>
+<th>一句话直觉</th>
+<th>机制 / 在本手册里的含义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a id="g-supercomputer"></a>All Capacity 整 pod</td>
+<td>「整 pod 交给你自己调度」</td>
+<td>官方名 TPU All Capacity 模式：整块容量不留 holdback，交给你自己调度</td>
+</tr>
+<tr>
+<td><a id="g-all-capacity"></a>All Capacity / DENSE</td>
+<td>包下整个车辆段</td>
+<td>整块 reservation 交给使用方，无 holdback，自理故障</td>
+</tr>
+<tr>
+<td><a id="g-block"></a>block / superpod</td>
+<td>整个车辆段</td>
+<td>144 个 cube 组成的物理 pod</td>
+</tr>
+<tr>
+<td><a id="g-pod-two"></a>pod</td>
+<td>车辆段 / 一组乘客</td>
+<td>「整 pod」= 物理 pod（144 cube）；单说「pod」= <strong>K8s pod</strong>，一 host 一个，1 片 4x8x8 = 64 个，N 片 = N × 64 个（<a href="06c-multislice-training.html">06c</a>）</td>
+</tr>
+<tr>
+<td><a id="g-cube"></a>sub-block / cube</td>
+<td>一节车厢</td>
+<td>16 host、64 chip、4x4x4</td>
+</tr>
+<tr>
+<td><a id="g-chip"></a>chip / device</td>
+<td>座位 / 座位上的两个人</td>
+<td>1 chip = 2 device（§1）</td>
+</tr>
+<tr>
+<td><a id="g-partition"></a>partition / partition ID</td>
+<td>车厢号（打了码的）</td>
+<td>节点标签 <code>...-partition-&lt;shape&gt;-id</code>；4x4x4 id = 混淆后的 sub-block id</td>
+</tr>
+<tr>
+<td><a id="g-partition-state"></a>partition state</td>
+<td>车厢体检结果</td>
+<td><code>...-partition-&lt;shape&gt;-state</code> = HEALTHY / DEGRADED（仅 4x4x4）/ UNHEALTHY / UNSET / INCOMPLETE。<strong>实测集群只见过 HEALTHY / UNHEALTHY</strong>（注 1）</td>
+</tr>
+<tr>
+<td><a id="g-workload-policy"></a>workload policy</td>
+<td>车厢规格单</td>
+<td><code>resource-policies create workload-policy</code>，HIGH_THROUGHPUT + 4x4x4 + PROVISION_ONLY；每个 super-slice 另建一个带目标拓扑的 workload policy</td>
+</tr>
+<tr>
+<td><a id="g-provision-only"></a>PROVISION_ONLY</td>
+<td>车厢通电但贯通道没接</td>
+<td>只开 VM 不连 ICI；只接受 4x4x4</td>
+</tr>
+<tr>
+<td><a id="g-slice"></a>Slice (CR)</td>
+<td>一列挂好的车</td>
+<td><code>accelerator.gke.io/v1beta1</code>：type/topology/partitionIds</td>
+</tr>
+<tr>
+<td><a id="g-super-sub"></a>super-slice / sub-slice</td>
+<td>多节车厢编成的车 / 一节车厢里单独卖出的包厢</td>
+<td>多 cube 拼 / cube 内切</td>
+</tr>
+<tr>
+<td><a id="g-mig"></a>MIG / MMIG</td>
+<td>车厢档案 / 列车编组单</td>
+<td>形成切片 = 各 cube 的 MIG attach 到该片 Multi-MIG</td>
+</tr>
+<tr>
+<td><a id="g-ici"></a>ICI</td>
+<td>列车内的贯通道</td>
+<td>芯片直连，只在切片内；每芯片 1,200 GB/s 双向</td>
+</tr>
+<tr>
+<td><a id="g-multislice"></a>multislice</td>
+<td>一个团分乘几列车</td>
+<td>同形状切片经 DCN 做数据并行</td>
+</tr>
+<tr>
+<td><a id="g-fsdp-dp"></a>FSDP / DP / EP</td>
+<td>一列车里分摊行李 / 几列车各载一队人 / 按专长分车厢</td>
+<td>FSDP 片内（ICI）；DP 片间（DCN）；EP 生产配置为 1（注 2）</td>
+</tr>
+<tr>
+<td><a id="g-dcn"></a>DCN</td>
+<td>列车间无线电</td>
+<td>VM 网卡跨切片通信；每芯片 100 Gb/s，同口径约为 ICI 的 1/50（注 3）</td>
+</tr>
+<tr>
+<td><a id="g-ocs"></a>OCS</td>
+<td>信号楼接线台</td>
+<td>按需重接 cube 间光纤；一个机箱坏 → 全部 cube DEGRADED</td>
+</tr>
+<tr>
+<td><a id="g-megascale"></a>megascale</td>
+<td>列车之间的通信系统</td>
+<td>跨切片集合通信层，flag 以 <code>--megascale_</code> 开头 <span class="tg inf">[推断]</span></td>
+</tr>
+<tr>
+<td><a id="g-kueue"></a>Kueue</td>
+<td>售票处</td>
+<td>批任务排队：ClusterQueue（配额池）、LocalQueue（ns 入口）、Workload（每个 JobSet 的「票」）</td>
+</tr>
+<tr>
+<td><a id="g-tas"></a>TAS</td>
+<td>按车厢号分座</td>
+<td>按节点标签层级（block → cube → … → host）挑相邻节点</td>
+</tr>
+<tr>
+<td><a id="g-admissioncheck"></a>AdmissionCheck</td>
+<td>检票闸机</td>
+<td>kueue-slice-controller 实现（<code>controllerName: accelerator.gke.io/slice</code>）：Slice 全 ACTIVE 才 Ready</td>
+</tr>
+<tr>
+<td><a id="g-gate"></a>scheduling gate</td>
+<td>闸机前排队</td>
+<td>pod 的 <code>schedulingGates</code>；AdmissionCheck Ready 后 Kueue 去掉</td>
+</tr>
+<tr>
+<td><a id="g-wfpr"></a>waitForPodsReady</td>
+<td>限时上车，掉队就整团重排</td>
+<td>超时没 Ready 或掉线超时就驱逐重排（<a href="03-control-plane-addons.html#step-3-2">03 §3.2</a>）</td>
+</tr>
+<tr>
+<td><a id="g-finalizer"></a>Slice finalizer</td>
+<td>解编锁</td>
+<td><code>accelerator.gke.io/slice-finalizer</code>；手动去掉留孤儿 MMIG（见<a href="pitfalls.html#l-40">经验教训第 40 条</a>）</td>
+</tr>
+<tr>
+<td><a id="g-ctm"></a>自触发维护</td>
+<td>自己安排进厂检修</td>
+<td>Customer-Triggered Maintenance</td>
+</tr>
+<tr>
+<td><a id="g-mtc"></a>MTC</td>
+<td>行李架 + 总部仓库</td>
+<td>Multi-Tier Checkpointing：本地 ramdisk（快，换拓扑可能丢）+ GCS 持久层（<a href="07-resilience-and-recovery.html#step-7-4">07 §7.4</a>）</td>
+</tr>
+<tr>
+<td><a id="g-donor"></a>donor cube</td>
+<td>—</td>
+<td>整机备件；<strong>使用方 reservation 里没有</strong>，有无与数量以 Google 书面答复为准</td>
+</tr>
+<tr>
+<td><a id="g-rr"></a>R&amp;R / 下线</td>
+<td>送修 / 把坏车厢拉出车辆段</td>
+<td>Report &amp; Repair / 踢出坏宿主机</td>
+</tr>
+<tr>
+<td><a id="g-hdb"></a>HDB</td>
+<td>启动盘的配额账户</td>
+<td>Hyperdisk Balanced；tpu7x 启动盘只能用它</td>
+</tr>
+<tr>
+<td><a id="g-capacity-ledger"></a>Google 容量系统</td>
+<td>Google 的容量记账本</td>
+<td>后台记账，使用方看不到；「cube 都停在 8/16」是它记错账（见<a href="pitfalls.html#l-2">经验教训第 2 条</a>）<span class="tg inf">[推断]</span></td>
+</tr>
+<tr>
+<td><a id="g-topology"></a>Topology（Kueue 对象）</td>
+<td>座位图</td>
+<td><a href="03-control-plane-addons.html#step-3-4">03 §3.4</a> 建；TAS 按它挑节点，XPK 按名字找</td>
+</tr>
+<tr>
+<td><a id="g-overlap-audit"></a>重叠审计</td>
+<td>查两列车是否抢了同一节车厢</td>
+<td><a href="04-functional-verification.html#step-4-9">04 §4.9</a> 第 2 条命令（05 §5.6 用）</td>
+</tr>
+<tr>
+<td><a id="g-holdanddrain"></a><code>stopPolicy: HoldAndDrain</code></td>
+<td>售票处暂停并清场</td>
+<td>ClusterQueue 停止准入 <span class="tg inf">[推断：由取值名 Hold 归纳]</span> 并驱逐已准入任务（05 §5.6）</td>
+</tr>
+<tr>
+<td><a id="g-act-s"></a>act_s</td>
+<td>从「开始接线」到「开闸」的秒数</td>
+<td>首条 &quot;Creating Slice&quot; 到 AdmissionCheck Ready（<a href="04-functional-verification.html">04</a>）</td>
+</tr>
+<tr>
+<td><a id="g-ksc"></a>kueue-slice-controller</td>
+<td>售票处的传令员</td>
+<td>镜像 <code>tpuongke/kueue-slice-controller</code>，又名 <strong>kueue-tpu-ac</strong> / Kueue Slice Provisioner；区别见 <a href="#2-%E8%BD%AF%E4%BB%B6%E5%88%86%E5%B1%82%E8%B0%81%E7%AE%A1%E4%BB%80%E4%B9%88">§2</a></td>
+</tr>
+<tr>
+<td><a id="g-grouped"></a>GROUPED 维护</td>
+<td>全段统一检修日</td>
+<td>共用维护窗口，约 90 天一次、到期强制；可提前在 host / sub-block / block / reservation 级自触发</td>
+</tr>
+<tr>
+<td><a id="g-hns"></a>HNS 桶</td>
+<td>有真目录的 GCS 桶</td>
+<td>原子重命名、写 QPS 更高；MTC 备份要求用它</td>
+</tr>
+<tr>
+<td><a id="g-jit-aot"></a>JIT / AOT</td>
+<td>现场做饭 / 提前做好的盒饭</td>
+<td>JIT 开训现编，10+ 片 40 多分钟（06c §6.6）；AOT 在 CPU 机编成 pickle，多片首步 7–8 分钟（不含排队）；大规模建议提前编译（AOT），Google 可协助</td>
+</tr>
+<tr>
+<td><a id="g-slow-step"></a>慢步 / 双峰</td>
+<td>大部分车准点、偶尔几班晚点</td>
+<td>中位数只反映快的；实测集群 10+ 片双峰是分到坏 cube（06c §6.6 ④）；报中位、均值和慢步占比。<strong>口径（全书唯一）</strong>：慢步 = 步时 &gt; 1.2 × 稳态 p50；稳态 = step ≥ 3，剔除低于中位 0.3 倍或高于中位 2.1 倍的假象步，取 worker-0-0（06-jobset.sh steps 同口径）。不用固定秒数：整体慢的作业（如步时整体比快步慢 80% 以上的作业）按秒数会被记成 100% 慢步，把「整体慢」和「偶尔卡」混成一件事</td>
+</tr>
+</tbody>
+</table></div>
+<ul>
+<li>注 1：sub-cube 级另有 INCOMPLETE；GCE DEGRADED(15/15) 的 cube 标签是 UNHEALTHY。</li>
+<li>注 2：片内 <code>ici_fsdp_parallelism: 512</code>；<code>dcn_data_parallelism</code> = 片数；EP=1 理由见 <a href="06c-multislice-training.html">06c</a> 配置清单。</li>
+<li>注 3：100 Gb/s 即 12.5 GB/s，与 Scaling Book 的 TPU7x DCN 出口带宽一致；路径 TPU → PCIe → 主机 → 网络 → 对端 → PCIe → TPU <span class="src" tabindex="0">源<span class="srci">Scaling Book「How to Think About TPUs」https://jax-ml.github.io/scaling-book/tpus/</span></span>。倍数 [推断：ICI 1,200 GB/s 是<strong>双向</strong>，DCN 12.5 GB/s 是<strong>单向</strong>出口；同为单向 600 ÷ 12.5 = 48，同为双向 1,200 ÷ 25 = 48，约 50 倍、1.7 个数量级。拿双向比单向得 96，会被说成「两个数量级」——那是口径混用，别这么说]。</li>
+</ul>
+<p><strong>其他缩写</strong>：</p>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>缩写</th>
+<th>意思</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>CTK / gcluster</td>
+<td>Google Cluster Toolkit</td>
+</tr>
+<tr>
+<td>XPK</td>
+<td>TPU-on-GKE 提交工具；按名字找 <a href="#g-topology">Topology</a> 对象</td>
+</tr>
+<tr>
+<td>Warden</td>
+<td>GKE 准入规则，拦缺 TPU nodeSelector 的 pod（见<a href="pitfalls.html#l-31">经验教训第 31 条</a>）</td>
+</tr>
+<tr>
+<td>底层调度层</td>
+<td>Google 集群管理，GCE 底下一层</td>
+</tr>
+<tr>
+<td>QIR</td>
+<td>配额提升申请（quota increase request）<span class="tg inf">[推断]</span></td>
+</tr>
+<tr>
+<td>JIT 基线作业</td>
+<td>实测集群上用同一配置、JIT 编译跑的 10+ 片参考训练</td>
+</tr>
+<tr>
+<td>10+ 片 / 下一档 / 更大规模</td>
+<td>规模代称，从小到大：10+ 片 = 本书主实测规模；下一档 = 再大一级，JIT 仍能跑出步时；更大规模 = 再往上（含多档），JIT 训练栈挂在 <code>jax.devices()</code>，生产作业用提前编译（AOT）跑通</td>
+</tr>
+<tr>
+<td>TAM</td>
+<td>Technical Account Manager（08 / 09 升级路径）</td>
+</tr>
+<tr>
+<td>维修标记</td>
+<td>suspect machine hint，带着就不调度，交付前清掉（09 D21）</td>
+</tr>
+<tr>
+<td>Google 侧预留</td>
+<td>Google 容量侧给整 pod 建的预留（项目编号可能与使用方 reservation 不同） <span class="tg inf">[推断]</span></td>
+</tr>
+<tr>
+<td>CCA</td>
+<td>使用方非 TPU 资源（GCS、Hyperdisk、网络、CPU 池）容量申请（09 D19）；全称没写 <span class="tg inf">[推断]</span></td>
+</tr>
+<tr>
+<td>功耗档（默认档 / 高频档）</td>
+<td>libtpu 的功耗 / 频率档位：不额外指定即默认档，高频档更快、功耗更高；验收按默认档（04 C1 卡）</td>
+</tr>
+<tr>
+<td>GA</td>
+<td>「GA 版」= 正式发布；07 章「GA 4」= 梯度累积 4 步</td>
+</tr>
+<tr>
+<td>补丁</td>
+<td>指对 MaxText 的修改，上游未合入</td>
+</tr>
+</tbody>
+</table></div>
+<p><a id="g-zh-en"></a>
+<strong>中英术语对照</strong>：本书用中文写，很多词是英文原词的意译。读着别扭、或者要拿去搜官方文档时，按下表换回英文。</p>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>本书写法</th>
+<th>English</th>
+<th>在本书里指什么</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>预留</td>
+<td>reservation</td>
+<td>整 pod 的容量预留（<a href="09-pre-delivery-alignment.html#d22">D22</a>）</td>
+</tr>
+<tr>
+<td>未来预留</td>
+<td>future reservation</td>
+<td>先以 Draft 状态建、要使用方点接受的预留</td>
+</tr>
+<tr>
+<td>承诺使用折扣</td>
+<td>CUD（Committed Use Discount）</td>
+<td>1 / 3 / 5 年期的计费承诺</td>
+</tr>
+<tr>
+<td>切片 / 多片</td>
+<td>slice / multislice</td>
+<td>若干 cube 经 ICI 拼成的一块；多块经 DCN 一起训练</td>
+</tr>
+<tr>
+<td>形状</td>
+<td>topology / shape</td>
+<td>切片的三维尺寸，如 4x8x8</td>
+</tr>
+<tr>
+<td>节点池</td>
+<td>node pool</td>
+<td>GKE 节点池，一个 cube 一个</td>
+</tr>
+<tr>
+<td>主机 / 宿主机</td>
+<td>host / VM</td>
+<td>一台 TPU VM，4 颗芯片</td>
+</tr>
+<tr>
+<td>控制面</td>
+<td>control plane</td>
+<td>Kueue、slice controller 这一层</td>
+</tr>
+<tr>
+<td>配额</td>
+<td>quota（Kueue nominalQuota）</td>
+<td>ClusterQueue 能放行的芯片数</td>
+</tr>
+<tr>
+<td>准入 / 放行</td>
+<td>admission / admit</td>
+<td>Kueue 决定一个 Workload 能不能开跑</td>
+</tr>
+<tr>
+<td>闸门</td>
+<td>admission check / scheduling gate</td>
+<td>切片没全 ACTIVE 之前挡住 pod 的那道检查</td>
+</tr>
+<tr>
+<td>排队 / 抢占 / 优先级</td>
+<td>queueing / preemption / priority</td>
+<td>Kueue 的排队与抢占</td>
+</tr>
+<tr>
+<td>驱逐</td>
+<td>eviction</td>
+<td>把已准入的任务整体撤下重排</td>
+</tr>
+<tr>
+<td>污点 / 隔离</td>
+<td>taint（隔离 = 打 taint）</td>
+<td>给坏 cube 打 taint，不再调度（<a href="05-dynamic-slicing-operations.html#step-5-7">05 §5.7</a>）</td>
+</tr>
+<tr>
+<td>回收</td>
+<td>teardown / reclaim</td>
+<td>删 JobSet → Slice → MMIG → 节点池</td>
+</tr>
+<tr>
+<td>编组</td>
+<td>MMIG attach</td>
+<td>各 cube 的 MIG 挂到同一个 Multi-MIG，形成切片</td>
+</tr>
+<tr>
+<td>健康 / 降级 / 不健康</td>
+<td>HEALTHY / DEGRADED / UNHEALTHY</td>
+<td>cube 的 partition state 标签</td>
+</tr>
+<tr>
+<td>热备 / 备件</td>
+<td>hot spare / spare cube</td>
+<td>留着不进主队列、坏了顶上的 cube</td>
+</tr>
+<tr>
+<td>维护窗口</td>
+<td>maintenance window</td>
+<td>GROUPED 维护的共用窗口</td>
+</tr>
+<tr>
+<td>送修</td>
+<td>Report &amp; Repair（R&amp;R）</td>
+<td>报修坏宿主机，由 Google 换修</td>
+</tr>
+<tr>
+<td>巡检</td>
+<td>health check / sweep</td>
+<td>定期拿小切片扫 cube</td>
+</tr>
+<tr>
+<td>冒烟测试</td>
+<td>smoke test</td>
+<td>最小规模跑通一次，只看能不能跑</td>
+</tr>
+<tr>
+<td>演练</td>
+<td>drill</td>
+<td>故意制造故障，验证恢复流程</td>
+</tr>
+<tr>
+<td>检查点 / 存档</td>
+<td>checkpoint</td>
+<td>训练状态落盘；「存档」也指把原始配置留底</td>
+</tr>
+<tr>
+<td>断点续训</td>
+<td>resume from checkpoint</td>
+<td>从检查点恢复训练</td>
+</tr>
+<tr>
+<td>桶 / 挂载 / 缓存</td>
+<td>bucket / mount（gcsfuse）/ cache（Anywhere Cache）</td>
+<td>GCS 数据路径（<a href="06a-storage-anywhere-cache-gcsfuse.html">06a</a>）</td>
+</tr>
+<tr>
+<td>配方</td>
+<td>recipe</td>
+<td>一套可复现的训练配置（模型、并行、flag），如 <a href="06b-public-config-recipe-dsv3.html">06b</a></td>
+</tr>
+<tr>
+<td>现编 / 提前编译</td>
+<td>JIT / AOT compilation</td>
+<td>开训时编译 / 事先在 CPU 机上编好</td>
+</tr>
+<tr>
+<td>步时</td>
+<td>step time</td>
+<td>一个训练 step 的耗时</td>
+</tr>
+<tr>
+<td>稳态</td>
+<td>steady state</td>
+<td>去掉开头几步之后的步时</td>
+</tr>
+<tr>
+<td>慢步 / 双峰</td>
+<td>slow step / bimodal</td>
+<td>见上表「慢步」</td>
+</tr>
+<tr>
+<td>吞吐 / 利用率</td>
+<td>throughput / MFU</td>
+<td>tokens/s；模型算力利用率</td>
+</tr>
+<tr>
+<td>分片</td>
+<td>sharding</td>
+<td>张量按维度切到多颗芯片上</td>
+</tr>
+<tr>
+<td>口径</td>
+<td>definition / counting basis</td>
+<td>一个数按什么规则数出来，比如「健康 cube」按哪个系统数</td>
+</tr>
+<tr>
+<td>实测 / 推断</td>
+<td>measured / inferred</td>
+<td>本书的证据标记：亲手跑过 / 由其他事实推出来</td>
+</tr>
+<tr>
+<td>先例</td>
+<td>reference deployment</td>
+<td>本书之前的同类部署，用作对照</td>
+</tr>
+<tr>
+<td>交付 / 验收</td>
+<td>handover / acceptance</td>
+<td>集群交给使用方 / 双方按验收表签字确认</td>
+</tr>
+<tr>
+<td>对账</td>
+<td>reconciliation</td>
+<td>三方核对 cube 数是否一致</td>
+</tr>
+<tr>
+<td>台账</td>
+<td>ledger</td>
+<td>本地记录文件，如隔离 cube 清单</td>
+</tr>
+<tr>
+<td>幂等</td>
+<td>idempotent</td>
+<td>同一条命令重跑多次结果不变</td>
+</tr>
+<tr>
+<td>回滚</td>
+<td>rollback</td>
+<td>撤销刚做的改动</td>
+</tr>
+<tr>
+<td>告警 / 看板 / 指标</td>
+<td>alert / dashboard / metric</td>
+<td>可观测性三件套（<a href="08b-observability.html">08b</a>）</td>
+</tr>
+<tr>
+<td>分诊</td>
+<td>triage</td>
+<td>先判断故障属于哪一层，再找对应的人</td>
+</tr>
+<tr>
+<td>工单 / 升级</td>
+<td>ticket（bug）/ escalation</td>
+<td>向 Google 报问题和升级路径</td>
+</tr>
+<tr>
+<td>根因 / 复盘</td>
+<td>root cause / postmortem</td>
+<td>事故分析</td>
+</tr>
+</tbody>
+</table></div>
+<h2 id="检查点" class="hc3">检查点</h2>
+<ul class="contains-task-list">
+<li class="task-list-item qa"><details><summary>9,216 chip 是怎么乘出来的？一个 4x8x8 切片要几个 cube、多少台 host？</summary><div class="qa-a">144×16×4；4 个 cube、64 台 host</div></details></li>
+<li class="task-list-item qa"><details><summary>为什么节点池全 Ready 了，TPU 任务还是跑不起来？</summary><div class="qa-a">PROVISION_ONLY：没形成 Slice 就没有 ICI</div></details></li>
+<li class="task-list-item qa"><details><summary>两个「slice controller」各是谁装的、挂了分别是什么后果？</summary><div class="qa-a">§2 对照表</div></details></li>
+<li class="task-list-item qa"><details><summary>为什么 9,216 芯片训练一定是 multislice？</summary><div class="qa-a">公开文档单片最多 32 cube；SLO 覆盖的 cube 数不是切片上限，§3</div></details></li>
+<li class="task-list-item qa"><details><summary>坏了一段 cube 之间的光路，切片还开得出来吗？</summary><div class="qa-a">开得出，ICI resiliency 绕路降速，§3</div></details></li>
+<li class="task-list-item qa"><details><summary>书面约定里最多能指望多少 cube 同时可用？</summary><div class="qa-a">SLO 按 cube 计、数量以合同为准，最大任务 128，§4；和使用方怎么定见 <a href="09-pre-delivery-alignment.html">09</a></div></details></li>
+</ul>
+<p><strong>交棒</strong>：数清能用的 cube，定下建完就改不了的配额、版本、网络 → <a href="01-capacity-and-prereqs.html">01</a>。</p>

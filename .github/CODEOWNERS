@@ -1,0 +1,4 @@
+# 每门课一个文件夹，各自指定负责人；改哪个文件夹，就要那个文件夹的负责人批准才能合并。
+# 新增合作者时在对应文件夹后面加上 GitHub 用户名。
+*                        @yangwhale
+/tpu-cluster-handbook/   @yangwhale

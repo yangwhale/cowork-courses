@@ -1,0 +1,367 @@
+{
+ "title": "TPU7x 集群交付参考手册",
+ "foot": "万卡级 TPU7x 集群交付参考手册 · [推断] / [需验证] 标记表示结论强度，不构成承诺。",
+ "sections": [
+  {
+   "name": "交付手册",
+   "home": "runbook/README.html"
+  },
+  {
+   "name": "讲义",
+   "home": "lectures/index.html"
+  },
+  {
+   "name": "经验教训",
+   "home": "runbook/pitfalls.html"
+  }
+ ],
+ "pages": [
+  {
+   "path": "index.html",
+   "standalone": true
+  },
+  {
+   "path": "promo/handbook/index.html",
+   "standalone": true
+  },
+  {
+   "path": "lectures/index.html",
+   "section": "讲义",
+   "title": "讲义总览",
+   "side": "讲义总览",
+   "article": "md lecture",
+   "level": "l2",
+   "no_pn": true,
+   "no_toc": true
+  },
+  {
+   "path": "lectures/00-overview.html",
+   "section": "讲义",
+   "title": "00 总览 · 讲义",
+   "side": "00 总览 · 讲义",
+   "article": "md lecture",
+   "level": "l3",
+   "lecture_minutes": "11.25′",
+   "handbook": "runbook/00-overview.html"
+  },
+  {
+   "path": "lectures/01-capacity-and-prereqs.html",
+   "section": "讲义",
+   "title": "01 容量核对与前置条件 · 讲义",
+   "side": "01 容量核对与前置条件 · 讲义",
+   "article": "md lecture",
+   "level": "l3",
+   "lecture_minutes": "13′",
+   "handbook": "runbook/01-capacity-and-prereqs.html"
+  },
+  {
+   "path": "lectures/02-cluster-bringup.html",
+   "section": "讲义",
+   "title": "02 建集群与 144 个节点池 · 讲义",
+   "side": "02 建集群与 144 个节点池 · 讲义",
+   "article": "md lecture",
+   "level": "l3",
+   "lecture_minutes": "18.5′",
+   "handbook": "runbook/02-cluster-bringup.html"
+  },
+  {
+   "path": "lectures/03-control-plane-addons.html",
+   "section": "讲义",
+   "title": "03 集群内组件 · 讲义",
+   "side": "03 集群内组件 · 讲义",
+   "article": "md lecture",
+   "level": "l3",
+   "lecture_minutes": "15.5′",
+   "handbook": "runbook/03-control-plane-addons.html"
+  },
+  {
+   "path": "lectures/04-functional-verification.html",
+   "section": "讲义",
+   "title": "04 功能验证 · 讲义",
+   "side": "04 功能验证 · 讲义",
+   "article": "md lecture",
+   "level": "l3",
+   "lecture_minutes": "20.25′",
+   "handbook": "runbook/04-functional-verification.html"
+  },
+  {
+   "path": "lectures/05-dynamic-slicing-operations.html",
+   "section": "讲义",
+   "title": "05 动态切片日常操作 · 讲义",
+   "side": "05 动态切片日常操作 · 讲义",
+   "article": "md lecture",
+   "level": "l3",
+   "lecture_minutes": "19′",
+   "handbook": "runbook/05-dynamic-slicing-operations.html"
+  },
+  {
+   "path": "lectures/06a-storage-anywhere-cache-gcsfuse.html",
+   "section": "讲义",
+   "title": "06a 存储：九千芯同时读，桶扛不扛得住 · 讲义",
+   "side": "06a 存储：九千芯同时读，桶扛不扛得住 · 讲义",
+   "article": "md lecture",
+   "level": "l3",
+   "lecture_minutes": "10.5′",
+   "handbook": "runbook/06a-storage-anywhere-cache-gcsfuse.html"
+  },
+  {
+   "path": "lectures/06c-multislice-training.html",
+   "section": "讲义",
+   "title": "06c 起一个数千芯片多切片训练 · 讲义",
+   "side": "06c 起一个数千芯片多切片训练 · 讲义",
+   "article": "md lecture",
+   "level": "l3",
+   "lecture_minutes": "26.5′",
+   "handbook": "runbook/06c-multislice-training.html"
+  },
+  {
+   "path": "lectures/07-resilience-and-recovery.html",
+   "section": "讲义",
+   "title": "07 韧性与恢复 · 讲义",
+   "side": "07 韧性与恢复 · 讲义",
+   "article": "md lecture",
+   "level": "l3",
+   "lecture_minutes": "25.75′",
+   "handbook": "runbook/07-resilience-and-recovery.html"
+  },
+  {
+   "path": "lectures/08-day2-operations.html",
+   "section": "讲义",
+   "title": "08 日常运维 · 讲义",
+   "side": "08 日常运维 · 讲义",
+   "article": "md lecture",
+   "level": "l3",
+   "lecture_minutes": "19.75′",
+   "handbook": "runbook/08-day2-operations.html"
+  },
+  {
+   "path": "lectures/09-pre-delivery-alignment.html",
+   "section": "讲义",
+   "title": "09 交付前对齐 · 讲义",
+   "side": "09 交付前对齐 · 讲义",
+   "article": "md lecture",
+   "level": "l3",
+   "lecture_minutes": "17′",
+   "handbook": "runbook/09-pre-delivery-alignment.html"
+  },
+  {
+   "path": "runbook/README.html",
+   "section": "交付手册",
+   "title": "TPU v7x 整 pod（All Capacity 模式）GKE 交付手册",
+   "side": "目录与交付清单",
+   "article": "md",
+   "level": "l3"
+  },
+  {
+   "path": "runbook/00-overview.html",
+   "section": "交付手册",
+   "title": "00 总览：一个整 pod 是什么",
+   "side": "00 总览：一个整 pod 是什么",
+   "article": "md",
+   "level": "l3",
+   "lecture_minutes": "11.25′",
+   "lecture": "lectures/00-overview.html"
+  },
+  {
+   "path": "runbook/01-capacity-and-prereqs.html",
+   "section": "交付手册",
+   "title": "01 容量核对与前置条件",
+   "side": "01 容量核对与前置条件",
+   "article": "md",
+   "level": "l3",
+   "lecture_minutes": "13′",
+   "lecture": "lectures/01-capacity-and-prereqs.html"
+  },
+  {
+   "path": "runbook/02-cluster-bringup.html",
+   "section": "交付手册",
+   "title": "02 建集群与 144 个节点池",
+   "side": "02 建集群与 144 个节点池",
+   "article": "md",
+   "level": "l3",
+   "lecture_minutes": "18.5′",
+   "lecture": "lectures/02-cluster-bringup.html"
+  },
+  {
+   "path": "runbook/03-control-plane-addons.html",
+   "section": "交付手册",
+   "title": "03 集群内组件：JobSet、Kueue、kueue-slice-controller、队列",
+   "side": "03 集群内组件：JobSet、Kueue、kueue-slice-controller、队…",
+   "article": "md",
+   "level": "l3",
+   "lecture_minutes": "15.5′",
+   "lecture": "lectures/03-control-plane-addons.html"
+  },
+  {
+   "path": "runbook/04-functional-verification.html",
+   "section": "交付手册",
+   "title": "04 功能验证阶梯",
+   "side": "04 功能验证阶梯",
+   "article": "md",
+   "level": "l3",
+   "lecture_minutes": "20.25′",
+   "lecture": "lectures/04-functional-verification.html"
+  },
+  {
+   "path": "runbook/05-dynamic-slicing-operations.html",
+   "section": "交付手册",
+   "title": "05 动态切片日常操作",
+   "side": "05 动态切片日常操作",
+   "article": "md",
+   "level": "l3",
+   "lecture_minutes": "19′",
+   "lecture": "lectures/05-dynamic-slicing-operations.html"
+  },
+  {
+   "path": "runbook/06-slice-request-and-multislice.html",
+   "section": "交付手册",
+   "title": "06 申请 slice：数量、形状、placement、多片互联",
+   "side": "06 申请 slice：数量、形状、placement、多片互联",
+   "article": "md",
+   "level": "l3"
+  },
+  {
+   "path": "runbook/06a-storage-anywhere-cache-gcsfuse.html",
+   "section": "交付手册",
+   "title": "06a 存储：Anywhere Cache、带宽配额、gcsfuse 怎么配合",
+   "side": "06a 存储：Anywhere Cache、带宽配额、gcsfuse 怎么配合",
+   "article": "md",
+   "level": "l3",
+   "lecture_minutes": "10.5′",
+   "lecture": "lectures/06a-storage-anywhere-cache-gcsfuse.html"
+  },
+  {
+   "path": "runbook/06b-public-config-recipe-dsv3.html",
+   "section": "交付手册",
+   "title": "06b 公开配置训练配方：DeepSeek-V3 671B × 10+ 片 4x8x8（数千芯片）",
+   "side": "06b 公开配置训练配方：DeepSeek-V3 671B × 10+ 片 4x8x8",
+   "article": "md",
+   "level": "l3"
+  },
+  {
+   "path": "runbook/06c-multislice-training.html",
+   "section": "交付手册",
+   "title": "06c 起一个数千芯片多切片训练（复现一份参考训练配置）",
+   "side": "06c 起一个数千芯片多切片训练",
+   "article": "md",
+   "level": "l3",
+   "lecture_minutes": "26.5′",
+   "lecture": "lectures/06c-multislice-training.html"
+  },
+  {
+   "path": "runbook/07-resilience-and-recovery.html",
+   "section": "交付手册",
+   "title": "07 韧性：检查点、故障演练、恢复",
+   "side": "07 韧性：检查点、故障演练、恢复",
+   "article": "md",
+   "level": "l3",
+   "lecture_minutes": "25.75′",
+   "lecture": "lectures/07-resilience-and-recovery.html"
+  },
+  {
+   "path": "runbook/07a-fault-recovery.html",
+   "section": "交付手册",
+   "title": "07a 故障恢复专题：演练、MTC、换片与时间账",
+   "side": "07a 故障恢复专题：演练、MTC、换片与时间账",
+   "article": "md",
+   "level": "l3"
+  },
+  {
+   "path": "runbook/08-day2-operations.html",
+   "section": "交付手册",
+   "title": "08 日常运维：监控、维护、升级、巡检、找谁、事故手册",
+   "side": "08 日常运维：监控、维护、升级、巡检、找谁、事故手册",
+   "article": "md",
+   "level": "l3",
+   "lecture_minutes": "19.75′",
+   "lecture": "lectures/08-day2-operations.html"
+  },
+  {
+   "path": "runbook/08a-slow-node-sop.html",
+   "section": "交付手册",
+   "title": "08a 慢节点 / 慢片标准流程（使用方上线 + 日常运行）",
+   "side": "08a 慢节点 / 慢片标准流程",
+   "article": "md",
+   "level": "l3"
+  },
+  {
+   "path": "runbook/08b-observability.html",
+   "section": "交付手册",
+   "title": "08b 可观测性：看什么、怎么看、怎么靠它找到问题",
+   "side": "08b 可观测性：看什么、怎么看、怎么靠它找到问题",
+   "article": "md",
+   "level": "l3"
+  },
+  {
+   "path": "runbook/08c-production-incidents.html",
+   "section": "交付手册",
+   "title": "08c 上线周的生产事故：会出什么、怎么提前防、出了怎么判",
+   "side": "08c 上线周的生产事故：会出什么、怎么提前防、出了怎么判",
+   "article": "md",
+   "level": "l3"
+  },
+  {
+   "path": "runbook/09-pre-delivery-alignment.html",
+   "section": "交付手册",
+   "title": "09 交付前需要和你确认的决策",
+   "side": "09 交付前需要和你确认的决策",
+   "article": "md",
+   "level": "l3",
+   "lecture_minutes": "17′",
+   "lecture": "lectures/09-pre-delivery-alignment.html"
+  },
+  {
+   "path": "runbook/scripts/README.html",
+   "section": "交付手册",
+   "title": "脚本参考",
+   "side": "脚本参考",
+   "article": "md",
+   "level": "l3"
+  },
+  {
+   "path": "runbook/pitfalls.html",
+   "section": "经验教训",
+   "title": "经验教训与注意事项",
+   "side": "经验教训与注意事项",
+   "article": "md",
+   "level": "l3"
+  }
+ ],
+ "redirects": {
+  "insights/README.html": {
+   "to": "../runbook/pitfalls.html",
+   "title": "已并入《经验教训》",
+   "kind": "merged"
+  },
+  "lectures/06-multislice-training.html": {
+   "to": "06c-multislice-training.html",
+   "title": "已改号：《万卡级 TPU7x 集群交付参考手册》",
+   "kind": "renamed"
+  },
+  "lectures/06d-storage-anywhere-cache-gcsfuse.html": {
+   "to": "06a-storage-anywhere-cache-gcsfuse.html",
+   "title": "已改号：《万卡级 TPU7x 集群交付参考手册》",
+   "kind": "renamed"
+  },
+  "runbook/06-multislice-training.html": {
+   "to": "06c-multislice-training.html",
+   "title": "已改号：《万卡级 TPU7x 集群交付参考手册》",
+   "kind": "renamed"
+  },
+  "runbook/06a-public-config-recipe-dsv3.html": {
+   "to": "06b-public-config-recipe-dsv3.html",
+   "title": "已改号：《万卡级 TPU7x 集群交付参考手册》",
+   "kind": "renamed"
+  },
+  "runbook/06c-slice-request-and-multislice.html": {
+   "to": "06-slice-request-and-multislice.html",
+   "title": "已改号：《万卡级 TPU7x 集群交付参考手册》",
+   "kind": "renamed"
+  },
+  "runbook/06d-storage-anywhere-cache-gcsfuse.html": {
+   "to": "06a-storage-anywhere-cache-gcsfuse.html",
+   "title": "已改号：《万卡级 TPU7x 集群交付参考手册》",
+   "kind": "renamed"
+  }
+ }
+}
